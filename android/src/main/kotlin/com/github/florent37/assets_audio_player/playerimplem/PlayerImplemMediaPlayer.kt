@@ -2,12 +2,64 @@ package com.github.florent37.assets_audio_player.playerimplem
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.media.MediaPlayer.*
 import android.net.Uri
+import android.util.Log
+import com.github.florent37.assets_audio_player.AssetAudioPlayerThrowable
+import com.github.florent37.assets_audio_player.AssetsAudioPlayerPlugin
 import com.github.florent37.assets_audio_player.Player
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
+
+class PlayerImplemTesterMediaPlayer : PlayerImplemTester {
+
+    private fun mapError(t: Throwable): AssetAudioPlayerThrowable {
+        return AssetAudioPlayerThrowable.PlayerError(t)
+    }
+
+    override suspend fun open(configuration: PlayerFinderConfiguration): PlayerFinder.PlayerWithDuration {
+        if(AssetsAudioPlayerPlugin.displayLogs) {
+            Log.d("PlayerImplem", "trying to open with native mediaplayer")
+        }
+        val mediaPlayer = PlayerImplemMediaPlayer(
+                onFinished = {
+                    configuration.onFinished?.invoke()
+                    //stop(pingListener = false)
+                },
+                onBuffering = {
+                    configuration.onBuffering?.invoke(it)
+                },
+                onError = { t ->
+                    configuration.onError?.invoke(mapError(t))
+                }
+        )
+        try {
+            val durationMS = mediaPlayer.open(
+                    context = configuration.context,
+                    assetAudioPath = configuration.assetAudioPath,
+                    audioType = configuration.audioType,
+                    assetAudioPackage = configuration.assetAudioPackage,
+                    networkHeaders = configuration.networkHeaders,
+                    flutterAssets = configuration.flutterAssets
+            )
+            return PlayerFinder.PlayerWithDuration(
+                    player = mediaPlayer,
+                    duration = durationMS
+            )
+        } catch (t: Throwable) {
+            if(AssetsAudioPlayerPlugin.displayLogs) {
+                Log.d("PlayerImplem", "failed to open with native mediaplayer")
+            }
+
+            mediaPlayer.release()
+            throw  t
+        }
+    }
+}
 
 class PlayerImplemMediaPlayer(
         onFinished: (() -> Unit),
@@ -21,16 +73,24 @@ class PlayerImplemMediaPlayer(
     private var mediaPlayer: MediaPlayer? = null
 
     override val isPlaying: Boolean
-        get() = try { mediaPlayer?.isPlaying ?: false } catch (t: Throwable) { false }
+        get() = try {
+            mediaPlayer?.isPlaying ?: false
+        } catch (t: Throwable) {
+            false
+        }
     override val currentPositionMs: Long
-        get() = try { mediaPlayer?.currentPosition?.toLong() ?: 0 } catch (t: Throwable) { 0 }
+        get() = try {
+            mediaPlayer?.currentPosition?.toLong() ?: 0
+        } catch (t: Throwable) {
+            0
+        }
 
     override var loopSingleAudio: Boolean
         get() = mediaPlayer?.isLooping ?: false
         set(value) {
             mediaPlayer?.isLooping = value
         }
-    
+
     override fun stop() {
         mediaPlayer?.stop()
     }
@@ -50,46 +110,80 @@ class PlayerImplemMediaPlayer(
             audioType: String,
             networkHeaders: Map<*, *>?,
             assetAudioPackage: String?
-    ): DurationMS = suspendCoroutine { continuation ->
-        this.mediaPlayer = MediaPlayer()
-        
-        when (audioType) {
-            Player.AUDIO_TYPE_NETWORK, Player.AUDIO_TYPE_LIVESTREAM -> {
-                mediaPlayer?.reset()
-                networkHeaders?.toMapString()?.let {
-                    mediaPlayer?.setDataSource(context, Uri.parse(assetAudioPath), it)
-                } ?: run {
-                    //without headers
-                    mediaPlayer?.setDataSource(assetAudioPath)
+    ): DurationMS = withContext(Dispatchers.IO) {
+        suspendCoroutine<DurationMS> { continuation ->
+            var onThisMediaReady = false
+
+            this@PlayerImplemMediaPlayer.mediaPlayer = MediaPlayer()
+
+            when (audioType) {
+                Player.AUDIO_TYPE_NETWORK, Player.AUDIO_TYPE_LIVESTREAM -> {
+                    mediaPlayer?.reset()
+                    networkHeaders?.toMapString()?.let {
+                        mediaPlayer?.setDataSource(context, Uri.parse(assetAudioPath), it)
+                    } ?: run {
+                        //without headers
+                        mediaPlayer?.setDataSource(assetAudioPath)
+                    }
+                }
+                Player.AUDIO_TYPE_FILE -> {
+                    mediaPlayer?.reset();
+                    mediaPlayer?.setDataSource(context, Uri.parse("file:///$assetAudioPath"))
+                }
+                else -> { //asset
+                    context.assets.openFd("flutter_assets/$assetAudioPath").also {
+                        mediaPlayer?.reset();
+                        mediaPlayer?.setDataSource(it.fileDescriptor, it.startOffset, it.declaredLength)
+                    }.close()
                 }
             }
-            Player.AUDIO_TYPE_FILE-> {
-                mediaPlayer?.reset();
-                mediaPlayer?.setDataSource(context, Uri.parse("file:///"+assetAudioPath))
-            }
-            else -> { //asset
-                context.assets.openFd("flutter_assets/$assetAudioPath").also {
-                    mediaPlayer?.reset();
-                    mediaPlayer?.setDataSource(it.fileDescriptor, it.startOffset, it.declaredLength)
-                }.close()
-            }
-        }
 
-        mediaPlayer?.setOnCompletionListener {
-            this.onFinished.invoke()
-        }
+            mediaPlayer?.setOnErrorListener { _, what, extra: Int ->
+                // what
+                //    MEDIA_ERROR_UNKNOWN
+                //    MEDIA_ERROR_SERVER_DIED
+                // extra
+                //    MEDIA_ERROR_IO
+                //    MEDIA_ERROR_MALFORMED
+                //    MEDIA_ERROR_UNSUPPORTED
+                //    MEDIA_ERROR_TIMED_OUT
+                //    MEDIA_ERROR_SYSTEM - low-level system error.
+                val error = if (what == MEDIA_ERROR_SERVER_DIED || extra == MEDIA_ERROR_IO || extra == MEDIA_ERROR_TIMED_OUT) {
+                    AssetAudioPlayerThrowable.NetworkError(Throwable(extra.toString()))
+                } else {
+                    AssetAudioPlayerThrowable.PlayerError(Throwable(extra.toString()))
+                }
 
-        try {
-            mediaPlayer?.setOnPreparedListener {
-                //retrieve duration in seconds
-                val duration = mediaPlayer?.duration ?: 0
-                val totalDurationMs = duration.toLong()
+                if (!onThisMediaReady) {
+                    continuation.resumeWithException(error)
+                } else {
+                    onError(error)
+                }
 
-                continuation.resume(totalDurationMs)
+                true
             }
-            mediaPlayer?.prepare()
-        } catch (t: Throwable){
-            continuation.resumeWithException(t)
+            mediaPlayer?.setOnCompletionListener {
+                this@PlayerImplemMediaPlayer.onFinished.invoke()
+            }
+
+            try {
+                mediaPlayer?.setOnPreparedListener {
+                    //retrieve duration in seconds
+                    val duration = mediaPlayer?.duration ?: 0
+                    val totalDurationMs = duration.toLong()
+
+                    continuation.resume(totalDurationMs)
+
+                    onThisMediaReady = true
+                }
+                mediaPlayer?.prepare()
+            } catch (error: Throwable) {
+                if (!onThisMediaReady) {
+                    continuation.resumeWithException(error)
+                } else {
+                    onError(AssetAudioPlayerThrowable.PlayerError(error))
+                }
+            }
         }
     }
 
@@ -109,9 +203,13 @@ class PlayerImplemMediaPlayer(
         //not possible
     }
 
+    override fun getSessionId(listener: (Int) -> Unit) {
+        mediaPlayer?.audioSessionId?.takeIf { it != 0 }?.let(listener)
+    }
+
 }
 
-fun Map<*,*>.toMapString() : Map<String, String> {
+fun Map<*, *>.toMapString(): Map<String, String> {
     val result = mutableMapOf<String, String>()
     this.forEach {
         it.key?.let { key ->

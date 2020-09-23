@@ -1,6 +1,7 @@
 package com.github.florent37.assets_audio_player.playerimplem
 
 import android.content.Context
+import com.github.florent37.assets_audio_player.AssetAudioPlayerThrowable
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 
 typealias DurationMS = Long
@@ -8,7 +9,7 @@ typealias DurationMS = Long
 abstract class PlayerImplem(
         val onFinished: (() -> Unit),
         val onBuffering: ((Boolean) -> Unit),
-        val onError: ((Throwable) -> Unit)
+        val onError: ((AssetAudioPlayerThrowable) -> Unit)
 ) {
     abstract var loopSingleAudio: Boolean
     abstract val isPlaying: Boolean
@@ -16,6 +17,7 @@ abstract class PlayerImplem(
     abstract fun stop()
     abstract fun play()
     abstract fun pause()
+    abstract fun getSessionId(listener: (Int) -> Unit)
     abstract suspend fun open(context: Context,
                      flutterAssets: FlutterPlugin.FlutterAssets,
                      assetAudioPath: String?,

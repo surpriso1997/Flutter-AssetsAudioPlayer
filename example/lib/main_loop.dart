@@ -25,12 +25,11 @@ class _MyAppState extends State {
       print("current : $data");
     });
     _assetsAudioPlayer.onReadyToPlay.listen((audio) {
-      print("onRedayToPlay : $audio");
+      print("onReadyToPlay : $audio");
     });
     _assetsAudioPlayer.open(Audio(
       "assets/audios/water.mp3",
-    ), loop: true
-    );
+    ), loopMode: LoopMode.playlist);
     super.initState();
   }
 

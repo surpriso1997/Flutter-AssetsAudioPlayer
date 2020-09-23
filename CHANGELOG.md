@@ -1,5 +1,61 @@
-## 2.0.1+3
+## 2.0.9+2
 
+* Renamed PhoneCallStrategy to AudioFocusStrategy
+* Allow on android to resume native players after focus lost
+
+## 2.0.8+5
+
+* Added Android HeadPhoneStrategy
+* Fix local path file uri (android)
+* Added open multiple calls protection
+* Open uri content on androids
+
+## 2.0.6+7
+
+* Cache now use `http` instead of `dio`
+* Added live tag on notification for LiveStream play (ios)
+* Added audio session id (android only)
+
+## 2.0.5+7
+
+* Added custom error handling (beta)
+* Dispose is now a future
+* Fixed playlist insert / replace
+
+## 2.0.5
+
+* Added Cache management (beta), with Audio.network(url, cached: true)
+
+## 2.0.4+2
+
+* Added HLS, Dash, SmoothStream support on Android
+* Added `laylist.replaceAt` method
+
+## 2.0.3+6
+
+* ExoPlayer network now set `allowCrossProtocolRedirect=true` by default
+* Fixed notification hide on livestream pause (android)
+* Added custom icons for android from drawable names
+* Fixed notification texts on Samsung devices
+
+## 2.0.3+1
+
+* Added custom notification icons for Android (in AndroidManifest.xml)
+* Fixed `seek` and `seekBy` not working on the web
+* `PlayList.startIndex` is now mutable
+* Stop player then call `play` reopen it at `playlist.startIndex`
+* Increased buffer size on android/exoplayer
+* Added keepLoopMode on prev/next
+
+## 2.0.2
+
+* Breaking change : `loop` boolean now enumerate 3 values : `none`, `single` and `playlist`
+
+## 2.0.1+9
+
+* Added `.showNotification = true/false` to hide dynamically displayed notification
+* Added custom action on notif click(android)
+* Added `isBuffering` to `RealtimePlayingInfos`
 * Added `AssetsAudioPlayerGroup` (beta)
 * Added Headers in `Audio.network` & `Audio.liveStream`
 

@@ -9,34 +9,46 @@ class NotificationManager(private val context: Context) {
     var closed = false
 
     fun showNotification(playerId: String, audioMetas: AudioMetas, isPlaying: Boolean, notificationSettings: NotificationSettings, stop: Boolean, durationMs: Long) {
-        if(closed)
-            return
-        if(stop){
-            stopNotification()
-        } else {
+        try {
+            if (closed)
+                return
+            if (stop) {
+                stopNotification()
+            } else {
+                context.startService(Intent(context, NotificationService::class.java).apply {
+                    putExtra(NotificationService.EXTRA_NOTIFICATION_ACTION, NotificationAction.Show(
+                            isPlaying = isPlaying,
+                            audioMetas = audioMetas,
+                            playerId = playerId,
+                            notificationSettings = notificationSettings,
+                            durationMs = durationMs
+                    ))
+                })
+            }
+            AssetsAudioPlayerPlugin.instance?.assetsAudioPlayer?.registerLastPlayerWithNotif(playerId)
+        } catch (t: Throwable) {
+            t.printStackTrace()
+        }
+    }
+
+    fun stopNotification() {
+        try {
             context.startService(Intent(context, NotificationService::class.java).apply {
-                putExtra(NotificationService.EXTRA_NOTIFICATION_ACTION, NotificationAction.Show(
-                        isPlaying = isPlaying,
-                        audioMetas = audioMetas,
-                        playerId = playerId,
-                        notificationSettings = notificationSettings,
-                        durationMs= durationMs
+                putExtra(NotificationService.EXTRA_NOTIFICATION_ACTION, NotificationAction.Hide(
                 ))
             })
+        } catch (t: Throwable) {
+            t.printStackTrace()
         }
-        AssetsAudioPlayerPlugin.instance?.assetsAudioPlayer?.registerLastPlayerWithNotif(playerId)
     }
 
-    fun stopNotification(){
-        context.startService(Intent(context, NotificationService::class.java).apply {
-            putExtra(NotificationService.EXTRA_NOTIFICATION_ACTION, NotificationAction.Hide(
-            ))
-        })
-    }
-
-    fun hideNotification(definitively: Boolean = false) {
-        //if remainingNotif == 0, stop
-        context.stopService(Intent(context, NotificationService::class.java))
-        closed = definitively
+    fun hideNotificationService(definitively: Boolean = false) {
+        try {
+            //if remainingNotif == 0, stop
+            context.stopService(Intent(context, NotificationService::class.java))
+            closed = definitively
+        } catch (t: Throwable) {
+            t.printStackTrace()
+        }
     }
 }

@@ -32,6 +32,8 @@ class AssetsAudioPlayerGroup {
 
   final PlayInBackground playInBackground;
 
+  AssetsAudioPlayerGroupErrorHandler onErrorDo; //custom error Handler
+
   final PlayerGroupMetasCallback updateNotification;
 
   final PlayerGroupCallback onNotificationOpened;
@@ -67,7 +69,13 @@ class AssetsAudioPlayerGroup {
     this.onNotificationStop,
     this.respectSilentMode = _DEFAULT_RESPECT_SILENT_MODE,
     this.playInBackground = _DEFAULT_PLAY_IN_BACKGROUND,
-  });
+  }) {
+    //default action, can be overriden using player.onErrorDo = (error, player) { ACTION };
+    this.onErrorDo = (group, errorHandler) {
+      print(errorHandler.error.message);
+      errorHandler.player.stop();
+    };
+  }
 
   List<PlayingAudio> get playingAudios {
     final List<PlayingAudio> audios = <PlayingAudio>[];
@@ -116,33 +124,43 @@ class AssetsAudioPlayerGroup {
     return __notificationSettings;
   }
 
-  Future<void> add(
-    Audio audio, {
-    bool loop = false,
+
+  Future<Map> add(
+    Playlist playlist, {
+    LoopMode loopMode = LoopMode.none,
     double volume,
     Duration seek,
     double playSpeed,
   }) async {
     final player = AssetsAudioPlayer.newPlayer();
-    player.open(
-      audio,
-      showNotification: false,
-      //not need here, we'll call another method `changeNotificationForGroup`
-      seek: seek,
-      autoStart: isPlaying.value,
-      //need to play() for player group
-      volume: volume,
-      loop: loop,
-      respectSilentMode: respectSilentMode,
-      playInBackground: playInBackground,
-      playSpeed: playSpeed,
-      notificationSettings: _notificationSettings,
-    );
-    await _addPlayer(audio, player);
+
+
+    try {
+      await player.open(
+        playlist,
+        showNotification: false,
+        //not need here, we'll call another method `changeNotificationForGroup`
+        seek: seek,
+        autoStart: isPlaying.value,
+        //need to play() for player group
+        volume: volume,
+        loopMode: loopMode,
+        respectSilentMode: respectSilentMode,
+        playInBackground: playInBackground,
+        playSpeed: playSpeed,
+        notificationSettings: _notificationSettings,
+      );
+
+      await _addPlayer(playlist, player);
+      return {"data": player};
+    } on PlatformException catch (e) {
+      return {"error": e.toString()};
+    }
+
   }
 
-  Future<void> addAll(List<Audio> audios) async {
-    for (Audio audio in audios) await add(audio);
+  Future<void> addAll(List<Playlist> audios) async {
+    for (Playlist audio in audios) await add(audio);
   }
 
   Future<void> removeAudio(Audio audio) async {
@@ -155,7 +173,7 @@ class AssetsAudioPlayerGroup {
     await _onPlayersChanged();
   }
 
-  Future<void> _addPlayer(Audio audio, AssetsAudioPlayer player) async {
+  Future<void> _addPlayer(Playlist audios, AssetsAudioPlayer player) async {
     StreamSubscription finishedSubscription;
     finishedSubscription = player.playlistFinished.listen((finished) {
       if (finished) {
@@ -164,9 +182,16 @@ class AssetsAudioPlayerGroup {
         _removePlayer(player);
       }
     });
+
     _subscriptions.add(finishedSubscription);
-    _audiosWithPlayers[audio] = player;
+    _audiosWithPlayers[audios.audios[0]] = player;
     await _onPlayersChanged();
+  }
+
+  void _onPlayerError(ErrorHandler errorHandler) {
+    if (this.onErrorDo != null) {
+      this.onErrorDo(this, errorHandler);
+    }
   }
 
   ///Called when an audio is added or removed (/finished)

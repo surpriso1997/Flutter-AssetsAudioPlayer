@@ -1,7 +1,7 @@
 import 'package:assets_audio_player/assets_audio_player.dart';
 import 'package:flutter/material.dart';
 
-final streamUrl = "http://bbcmedia.ic.llnwd.net/stream/bbcmedia_radio1_mf_p";
+final streamUrl = "http://media.emit.com/pbs/tomorrow-land/202005081300/aac_mid.m4a";
 
 void main() => runApp(MyApp());
 
@@ -41,7 +41,7 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-                  Player(streamUrl),
+            Player(streamUrl),
           ],
         ),
       ),
@@ -64,7 +64,33 @@ class _PlayerState extends State<Player> {
   @override
   void initState() {
     super.initState();
-    _player.open(Audio.liveStream(this.widget.streamPath), autoStart: false);
+    _init();
+  }
+
+  void _init() async {
+    try {
+      _player.onErrorDo = (error) {
+        error.player.stop();
+      };
+      await _player.open(
+        Audio.liveStream(this.widget.streamPath, metas: Metas(
+            title: "title",
+            album: "album",
+            artist: "artist",
+            image: MetasImage.network("https://i.pinimg.com/564x/e3/77/94/e377940a4c2417221d04c47e5a52d2d4.jpg")
+        )),
+        autoStart: false,
+        showNotification: true,
+
+        notificationSettings: NotificationSettings(
+            nextEnabled: false,
+            prevEnabled: false,
+            stopEnabled: false
+        ),
+      );
+    } catch(t) {
+      print(t);
+    }
   }
 
   @override
@@ -74,8 +100,14 @@ class _PlayerState extends State<Player> {
         PlayerBuilder.isBuffering(
           player: _player,
           builder: (context, isBuffering) {
-            if(isBuffering){
-              return Text("Buffering");
+            if (isBuffering) {
+              return Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 8,),
+                  Text("Buffering"),
+                ],
+              );
             } else {
               return SizedBox(); //empty
             }
@@ -86,8 +118,12 @@ class _PlayerState extends State<Player> {
           builder: (context, isPlaying) {
             return FloatingActionButton(
               child: isPlaying ? Icon(Icons.pause) : Icon(Icons.play_arrow),
-              onPressed: () {
-                _player.playOrPause();
+              onPressed: () async {
+                try {
+                  await _player.playOrPause();
+                } catch (t) {
+                  print(t);
+                }
               },
             );
           },
